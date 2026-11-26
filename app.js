@@ -1,196 +1,887 @@
 'use strict';
-const STORE_KEY='mt6_state_v2';
-const TOPICS=[
-  {id:'decimals', name:'Дзесятковыя дробы', emoji:'🔟'},
-  {id:'percent',  name:'Працэнты і прапорцыі', emoji:'💯'},
-  {id:'sets',     name:'Мноствы', emoji:'🎲'},
-  {id:'rational', name:'Рацыянальныя лікі', emoji:'➕'},
-  {id:'coords',   name:'Каардынатная плоскасць', emoji:'📈'},
-  {id:'geometry', name:'Наглядная геаметрыя', emoji:'📐'}
-];
-const TOPIC_MAP=Object.fromEntries(TOPICS.map(t=>[t.id,t]));
-function clampGrade(acc){return Math.max(1,Math.min(10,Math.round(1+acc*9)));}
-function overallGrade(s){if(!s.solved)return null;return clampGrade(s.correct/s.solved);}
-const BADGES=[
-  {id:'first',name:'Першы крок',emoji:'🐣',test:s=>s.solved>=1},
-  {id:'ten',name:'Дзясятак',emoji:'🔟',test:s=>s.solved>=10},
-  {id:'fifty',name:'Паўсотні',emoji:'🏅',test:s=>s.solved>=50},
-  {id:'hundred',name:'Сотня!',emoji:'🏆',test:s=>s.solved>=100},
-  {id:'streak3',name:'3 дні запар',emoji:'🔥',test:s=>s.streakDays>=3},
-  {id:'grade8',name:'Адзнака 8+',emoji:'🌟',test:s=>overallGrade(s)>=8},
-  {id:'grade10',name:'Ідэальна 10!',emoji:'💎',test:s=>overallGrade(s)>=10&&s.solved>=20},
-  {id:'perfect',name:'Бездакорная сесія',emoji:'✨',test:s=>s.hadPerfectSession}
-];
-function defaultState(){
-  const topics={};TOPICS.forEach(t=>topics[t.id]={correct:0,total:0,level:3});
-  return {xp:0,level:1,solved:0,correct:0,streakDays:0,lastDay:null,todayCount:0,todayDate:null,dailyGoal:10,topics,badges:[],hadPerfectSession:false,history:[],settings:{sound:true}};
-}
-function loadState(){
-  try{const s=JSON.parse(localStorage.getItem(STORE_KEY));if(!s||typeof s!=='object')return defaultState();
-    const d=defaultState();const m=Object.assign(d,s);
-    m.settings=Object.assign(d.settings,s.settings||{});
-    m.topics=Object.assign(d.topics,s.topics||{});
-    TOPICS.forEach(t=>{m.topics[t.id]=Object.assign({correct:0,total:0,level:3},m.topics[t.id]);});
-    return m;
-  }catch(e){return defaultState();}
-}
-function saveState(){try{localStorage.setItem(STORE_KEY,JSON.stringify(S));}catch(e){}}
-function ri(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
-function pick(a){return a[Math.floor(Math.random()*a.length)];}
-function r1(x){return Math.round(x*10)/10;}
-function r2(x){return Math.round(x*100)/100;}
-function sgn(x){return x<0?'−':'+';}
-function fd(x){return String(x).replace('-','−').replace('.',',');}
-function loc(s){return String(s).replace(/(\d)\.(\d)/g,'$1,$2');}
-/* ===== Раздзел 1: Дзесятковыя дробы ===== */
-function gAddDec(d){const p=d<=4?1:2,m=Math.pow(10,p);let a=ri(10,50+d*20)/m,b=ri(10,50+d*20)/m;return{q:`${a} + ${b} = ?`,a:r2(a+b),hint:'Коску пад коскай, складзі па разрадах.'};}
-function gSubDec(d){const p=d<=4?1:2,m=Math.pow(10,p);let a=ri(20,60+d*20)/m,b=ri(5,40+d*15)/m;if(a<b){const t=a;a=b;b=t;}return{q:`${a} − ${b} = ?`,a:r2(a-b),hint:'Коску пад коскай, аднімі па разрадах.'};}
-function gCmpDec(d){const m=100;let a=ri(110,80+d*20)/m;let b=r2(a+(Math.random()<.5?1:-1)*ri(1,15)/m);if(b===a)b=r2(a+1/m);return{q:`Параўнай ${a} і ${b}. Увядзі большае лік.`,a:Math.max(a,b),hint:'Параўноўвай па разрадах злева направа.'};}
-function gRoundDec(d){const a=ri(105,99+d*40)/100;return{q:`Акруглі ${a} да дзясятых.`,a:r1(a),hint:'Калі сотыя 5–9 — дзясятая +1.'};}
-function gPlaceDec(d){const a=ri(100,999)/100;const [nm,pos]=pick([['дзясятых',1],['сотых',2]]);const s=a.toFixed(2);const digit=Number(s.split('.')[1][pos-1]);return{q:`Якая лічба ў разрадзе ${nm} у ліку ${s.replace('.',',')}?`,a:digit,hint:'Пасля коскі: дзясятыя, сотыя, тысячныя.'};}
-function gMul10(d){const a=ri(11,99)/10;const k=pick([10,100,1000]);return{q:`${String(a).replace('.',',')} · ${k} = ?`,a:r2(a*k),hint:`Коску перанясі на ${String(k).length-1} знака ўправа.`};}
-function gMulDec(d){const a=ri(11,50)/10,b=ri(11,40)/10;return{q:`${String(a).replace('.',',')} · ${String(b).replace('.',',')} = ?`,a:r2(a*b),hint:'Памнож як цэлыя і аддзялі столькі знакаў, колькі іх пасля коскі.'};}
-function gDivNat(d){const n=ri(2,9),q0=ri(11,50)/10,a=r2(q0*n);return{q:`${String(a).replace('.',',')} : ${n} = ?`,a:r2(a/n),hint:'Дзялі як цэлы лік, коску перанясі ў дзель.'};}
-function gDivDec(d){const b=ri(2,9)/10,q0=ri(2,9),a=r2(b*q0);return{q:`${String(a).replace('.',',')} : ${String(b).replace('.',',')} = ?`,a:r2(a/b),hint:'Памнож абодва на 10/100, каб дзельнік стаў цэлым.'};}
-function gFracToDec(d){const dens=[2,4,5,8,10,20,25],den=pick(dens),num=ri(1,den-1);return{q:`Запішы дроб ${num}/${den} дзесятковым дробам.`,a:r2(num/den),hint:'Падзялі лічнік на назоўнік.'};}
-function gExprDec(d){const a=ri(11,40)/10,b=ri(11,30)/10,c=ri(2,9);return{q:`${String(a).replace('.',',')} + ${String(b).replace('.',',')} · ${c} = ?`,a:r2(a+b*c),hint:'Спачатку множанне, потым складанне.'};}
+/* ============================================================
+   app.js — Матэматычны трэнажор, 6 клас
+   1) §-выбар «раздзел → §» (панэль на галоўнай, docs/design-sub.md)
+   2) генератары з generators.js: window.SUBS / window.GEN_BY_SUB
+   3) стан v3: localStorage['mt6_state_v3'], subs['chapter:S<N>']
 
-/* ===== Раздзел 2: Працэнты і прапорцыі ===== */
-function gPctOf(d){const pct=pick([5,10,20,25,50,15]);const k=ri(1,3+d),base=100*k;return{q:`Знайдзі ${pct}% ад ${base}`,a:pct*k,hint:`${pct}% = ${pct}/100. Памнож і падзялі на 100.`};}
-function gFindWhole(d){const pct=pick([10,20,25,50]),part=pct*ri(2,6+d),whole=part*100/pct;return{q:`${pct}% гэта ${part}. Знайдзі ўсё лік.`,a:whole,hint:'Спачатку знайдзі 1% (падзялі на pct), потым памнож на 100.'};}
-function gPctRatio(d){const B=100*ri(1,2),pct=ri(10,90)*(1),A=B*pct/100;return{q:`Колькі працэнтаў складае ${A} ад ${B}?`,a:pct,hint:'(частка / цэлае) · 100%.'};}
-function gPctChange(d){const price=10*ri(5,20),pct=pick([10,20,25,50]);const up=Math.random()<.5;const ans=up?price*(100+pct)/100:price*(100-pct)/100;return{q:`Цана тавара ${price} руб. Яе ${up?'павысілі':'знізілі'} на ${pct}%. Новая цана?`,a:r2(ans),hint:'Знайдзі pct% ад цаны і дадай/аднімі.'};}
-function gProp(d){const b=ri(2,9),t=ri(1,4+d),a=b*t,dd=ri(2,9),x=t*dd;return{q:`${a} : ${b} = x : ${dd}`,a:x,hint:'Правіла прапорцыі: a·dd = b·x, адсюль x.'};}
-function gDirect(d){const per=ri(2,9),n1=ri(2,5),n2=ri(2,8);return{q:`${n1} кг тавару каштуюць ${per*n1} руб. Колькі каштуюць ${n2} кг?`,a:per*n2,hint:'Спачатку цана за 1 кг, потым памнож.'};}
-function gInverse(d){const w=ri(2,5),k=pick([2,3]),per=ri(3,8),days=k*per,w2=w*k;return{q:`${w} рабочых выконваюць працу за ${days} дзён. За колькі дзён гэтую працу выканаюць ${w2} рабочых?`,a:per,hint:'У колькі разоў больш рабочых — у столькі разоў менш дзён.'};}
-function gScale(d){const M=pick([100000,200000,50000]),cm=ri(2,9);return{q:`Маштаб карты 1:${M}. На плане адрэзак ${cm} см. Якая рэальная адлегласць (у метрах)?`,a:r2(cm*M/100),hint:'1 см = M см = M/100 м.'};}
-function gPie(d){const pct=pick([5,10,20,25,45]);return{q:`На кругавой дыяграме доля ${pct}%. Колькі гэта градусаў (усяго 360°)?`,a:r2(pct*360/100),hint:'pct% ад 360° = 360·pct/100.'};}
-/* ===== Раздзел 3: Мноствы ===== */
-function setOf(n,lo,hi){const s=new Set();while(s.size<n){s.add(ri(lo,hi));}return [...s];}
-function gSetCount(d){const n=ri(4,7),arr=[];for(let i=0;i<n;i++)arr.push(ri(1,6));const distinct=[...new Set(arr)];return{q:`Мноства зададзена пералікам: {${arr.join(', ')}}. Колькі ў ім розных элементаў?`,a:distinct.length,hint:'Паўторы лічацца адзін раз.'};}
-function gSetOp(d){const A=setOf(ri(3,5),1,10),B=setOf(ri(3,5),1,10);const inter=A.filter(x=>B.includes(x)),uni=[...new Set([...A,...B])];const kind=Math.random()<.5;if(kind){return{q:`A = {${A.join(', ')}}, B = {${B.join(', ')}}. Колькі элементаў у A ∩ B?`,a:inter.length,hint:'Перасячэнне — агульныя элементы.'};}return{q:`A = {${A.join(', ')}}, B = {${B.join(', ')}}. Колькі элементаў у A ∪ B?`,a:uni.length,hint:'Аб\'яднанне — усе элементы без паўтораў.'};}
-function gEuler(d){const both=ri(2,6),math=both+ri(3,8),phys=both+ri(3,8);if(Math.random()<.5){return{q:`У класе ${math} вучняў любяць матэматыку, ${phys} — фізкультуру, ${both} — абедзве. Колькі вучняў любяць хаця б адну з гэтых прадметаў?`,a:math+phys-both,hint:'Складзі і аднімі тых, хто любіць абедзве.'};}return{q:`У класе ${math} вучняў любяць матэматыку, ${phys} — фізкультуру, ${both} — абедзве. Колькі вучняў любяць ТОЛЬКІ матэматыку?`,a:math-both,hint:'Аднімі тых, хто любіць абедзве.'};}
+   Кананічны ключ § — 'decimals:S4': ён жа ключ GEN_BY_SUB і data-scope.
+   Мадэль — 1:1 па docs/data-model-sub.md (§5.7, §6).
+   ============================================================ */
 
-/* ===== Раздзел 4: Рацыянальныя лікі ===== */
-function gAddInt(d){const a=ri(-15-d*2,15+d*2),b=ri(-15-d*2,15+d*2);return{q:`${fd(a)} + (${fd(b)}) = ?`,a:a+b,hint:'Пры розных знаках аднімай меншы модуль ад большага.'};}
-function gSubInt(d){const a=ri(-15,15),b=ri(-15,15);return{q:`${fd(a)} − (${fd(b)}) = ?`,a:a-b,hint:'Адніманне адмоўнага = складанне.'};}
-function gMod(d){const a=ri(-20,20);return{q:`|${fd(a)}| = ?`,a:Math.abs(a),hint:'Модуль — адлегласць да нуля, заўсёды ≥ 0.'};}
-function gOpposite(d){const a=ri(-15,15);return{q:`Супрацьлеглы лік да ${fd(a)} — гэта?`,a:-a,hint:'Супрацьлеглы мае процілеглы знак.'};}
-function gCmpInt(d){let a=ri(-20,20),b=ri(-20,20);if(a===b)b=a+1;return{q:`Параўнай ${fd(a)} і ${fd(b)}. Увядзі большае лік.`,a:Math.max(a,b),hint:'На каардынатнай прамой большае — правей.'};}
-function gMulInt(d){let a=ri(-12,12),b=ri(-12,12);if(a===0)a=3;if(b===0)b=4;return{q:`${fd(a)} · (${fd(b)}) = ?`,a:a*b,hint:'−·− = +, −·+ = −.'};}
-function gDivInt(d){const b=ri(2,9)*(Math.random()<.5?1:-1),q0=ri(2,9)*(Math.random()<.5?1:-1),a=b*q0;return{q:`${fd(a)} : (${fd(b)}) = ?`,a:q0,hint:'Правіла знакаў як пры множанні.'};}
-function gExprInt(d){const a=ri(-10,10),b=ri(2,8),c=ri(-5,5);return{q:`${fd(a)} + ${b} · (${fd(c)}) = ?`,a:a+b*c,hint:'Спачатку множанне.'};}
-
-/* ===== Раздзел 5: Каардынатная плоскасць ===== */
-function gAbscissa(d){let x=ri(-8,8),y=ri(-8,8);if(x===0)x=3;if(y===0)y=-4;return Math.random()<.5?{q:`Пункт A(${fd(x)}; ${fd(y)}). Якая абсцыса?`,a:x,hint:'Абсцыса — першая каардыната.'}:{q:`Пункт A(${fd(x)}; ${fd(y)}). Якая ардыната?`,a:y,hint:'Ардыната — другая каардыната.'};}
-function gQuadrant(d){let x=ri(-6,6),y=ri(-6,6);if(x===0)x=2;if(y===0)y=-3;const quad=(x>0&&y>0)?1:(x<0&&y>0)?2:(x<0&&y<0)?3:4;return{q:`У якой каардынатнай чвэрці знаходзіцца пункт (${fd(x)}; ${fd(y)})?`,a:quad,hint:'I:(+,+), II:(−,+), III:(−,−), IV:(+,−).'};}
-function gPropGraph(d){const k=ri(2,6),x=ri(2,6);return{q:`y = ${k}x (прамая прапарцыянальнасць). Знайдзі y, калі x = ${x}.`,a:k*x,hint:'Падстаў x у формулу.'};}
-function gInvGraph(d){const k=ri(2,5)*ri(2,5),x=pick([2,3,4,6]);return{q:`y = ${k}/x (адваротная прапарцыянальнасць). Знайдзі y, калі x = ${x}.`,a:r2(k/x),hint:'Падстаў x у формулу.'};}
-
-/* ===== Раздзел 6: Наглядная геаметрыя ===== */
-function gVolume(d){const a=ri(2,6),b=ri(2,6),c=ri(2,6);return{q:`Прамавугольны паралелепіпед памерамі ${a}×${b}×${c} см. Знайдзі аб'ём (см³).`,a:a*b*c,hint:'V = a·b·c.'};}
-function gSurface(d){const a=ri(2,6),b=ri(2,6),c=ri(2,6);return{q:`Прамавугольны паралелепіпед ${a}×${b}×${c} см. Знайдзі плошчу паверхні (см²).`,a:2*(a*b+b*c+a*c),hint:'S = 2(ab + bc + ac).'};}
-function gCircum(d){const r=ri(1,8+d);return{q:`Радыус круга ${r} см. Знайдзі даўжыню акружнасці (π ≈ 3,14).`,a:r2(2*3.14*r),hint:'C = 2πr.'};}
-function gCircleArea(d){const r=ri(1,6+d);return{q:`Радыус круга ${r} см. Знайдзі плошчу круга (π ≈ 3,14).`,a:r2(3.14*r*r),hint:'S = πr².'};}
-function gTriangleAngle(d){const a=ri(30,80),b=ri(30,180-a-20);const c=180-a-b;if(c<=0)return gTriangleAngle(d);return{q:`Два вуглы трохвугольніка — ${a}° і ${b}°. Знайдзі трэці (у градусах).`,a:c,hint:'Сума вуглоў трохвугольніка = 180°.'};}
-function gSymmetry(d){const [nm,ax]=pick([['прамавугольніка',2],['квадрата',4],['роўнастаронняга трохвугольніка',3],['ромба',2]]);return{q:`Колькі восяў сіметрыі ў ${nm}?`,a:ax,hint:'Вось сіметрыі дзеліць фігуру на дзве роўныя часткі.'};}
-
-const GEN={
-  decimals:[gAddDec,gSubDec,gCmpDec,gRoundDec,gPlaceDec,gMul10,gMulDec,gDivNat,gDivDec,gFracToDec,gExprDec],
-  percent:[gPctOf,gFindWhole,gPctRatio,gPctChange,gProp,gDirect,gInverse,gScale,gPie],
-  sets:[gSetCount,gSetOp,gEuler],
-  rational:[gAddInt,gSubInt,gMod,gOpposite,gCmpInt,gMulInt,gDivInt,gExprInt],
-  coords:[gAbscissa,gQuadrant,gPropGraph,gInvGraph],
-  geometry:[gVolume,gSurface,gCircum,gCircleArea,gTriangleAngle,gSymmetry]
-};
-function weakestTopicIds(){return TOPICS.map(t=>({id:t.id,acc:S.topics[t.id].total?S.topics[t.id].correct/S.topics[t.id].total:0.5,total:S.topics[t.id].total})).sort((a,b)=>a.acc-b.acc);}
-function chooseQuestion(scope){
-  let topicId;
-  if(scope&&scope!=='mix'){topicId=scope;}
-  else{const w=weakestTopicIds(),weighted=[];w.forEach((x,i)=>{const c=4-i;for(let j=0;j<c;j++)weighted.push(x.id);});topicId=pick(weighted);}
-  let t=S.topics[topicId];let d=t.level||3;d=Math.max(1,Math.min(10,d));
-  const g=pick(GEN[topicId])(d);g.topicId=topicId;g.difficulty=d;return g;
-}
-/* ===== інтэрфейс ===== */
-const cv=document.getElementById('confetti');const ctx=cv.getContext('2d');
-let particles=[],rafId=null;
-function sizeCanvas(){cv.width=window.innerWidth;cv.height=window.innerHeight;}
-window.addEventListener('resize',sizeCanvas);sizeCanvas();
-function burst(){const cols=['#ff6b6b','#feca57','#48dbfb','#1dd1a1','#a29bfe','#fd79a8'];for(let i=0;i<90;i++){particles.push({x:window.innerWidth/2,y:window.innerHeight/2.4,vx:(Math.random()-0.5)*14,vy:(Math.random()-0.9)*14,g:0.35+Math.random()*0.2,col:pick(cols),life:70+Math.random()*30,r:3+Math.random()*4,rot:Math.random()*6,vr:(Math.random()-0.5)*0.3});}if(!rafId)rafId=requestAnimationFrame(tick);}
-function tick(){ctx.clearRect(0,0,cv.width,cv.height);particles.forEach(p=>{p.vy+=p.g;p.x+=p.vx;p.y+=p.vy;p.life--;p.rot+=p.vr;ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);ctx.globalAlpha=Math.max(0,p.life/80);ctx.fillStyle=p.col;ctx.fillRect(-p.r,-p.r,p.r*2,p.r*2);ctx.restore();});particles=particles.filter(p=>p.life>0&&p.y<cv.height+50);if(particles.length){rafId=requestAnimationFrame(tick);}else{ctx.clearRect(0,0,cv.width,cv.height);rafId=null;}}
-let audioCtx=null;
-function beep(ok){if(!S.settings.sound)return;try{audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.connect(g);g.connect(audioCtx.destination);o.type='sine';o.frequency.value=ok?880:220;g.gain.setValueAtTime(0.001,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(0.15,audioCtx.currentTime+0.02);g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.25);o.start();o.stop(audioCtx.currentTime+0.26);}catch(e){}}
-function $(id){return document.getElementById(id);}
-function show(id){['screen-home','screen-quiz','screen-result','screen-stats'].forEach(s=>$(s).classList.toggle('hidden',s!==id));}
-let S=loadState();let session=null;let current=null;
-function renderHome(){
-  const g=overallGrade(S);
-  $('home-grade').textContent=g===null?'—':g;$('home-level').textContent=S.level;$('home-xp').textContent=S.xp;$('home-streak').textContent=S.streakDays;
-  const goal=Math.min(S.todayCount,S.dailyGoal);$('daily-fill').style.width=Math.round(goal/S.dailyGoal*100)+'%';$('daily-text').textContent=`Сёння: ${goal}/${S.dailyGoal}`;
-  const grid=$('topic-grid');grid.innerHTML='';
-  TOPICS.forEach(t=>{const st=S.topics[t.id],acc=st.total?Math.round(st.correct/st.total*100):0;const b=document.createElement('button');b.className='topic-card';b.innerHTML=`<span class="tc-emoji">${t.emoji}</span><span class="tc-name">${t.name}</span><span class="tc-stat">${st.total?acc+'% • ур. '+st.level:'нов.'}</span>`;b.onclick=()=>startSession(t.id);grid.appendChild(b);});
-  show('screen-home');
-}
-function startSession(scope){session={scope:scope||'mix',answered:0,correct:0,total:10,startXp:S.xp,perfect:true};nextQuestion();show('screen-quiz');}
-function nextQuestion(){
-  if(session.answered>=session.total){finishSession();return;}
-  current=chooseQuestion(session.scope);
-  $('q-counter').textContent=`${session.answered+1} / ${session.total}`;
-  $('q-topic').textContent=TOPIC_MAP[current.topicId].emoji+' '+TOPIC_MAP[current.topicId].name;
-  $('quiz-fill').style.width=Math.round(session.answered/session.total*100)+'%';
-  $('question').textContent=loc(current.q);
-  const inp=$('answer');inp.value='';inp.disabled=false;
-  $('feedback').className='feedback hidden';$('feedback').textContent='';
-  $('submit-btn').classList.remove('hidden');$('next-btn').classList.add('hidden');$('mascot-emoji').textContent='🦉';
-  inp.onkeydown=(e)=>{if(e.key==='Enter')submitAnswer();};
-  setTimeout(()=>inp.focus(),50);
-}
-function parseAns(v){if(v==null||v==='')return NaN;var t=String(v).replace(',','.').replace(/[^0-9.\-]/g,'');if(t===''||t==='-'||t==='.')return NaN;return parseFloat(t);}
-function submitAnswer(){
-  const val=parseAns($('answer').value);
-  if(isNaN(val)){$('feedback').className='feedback warn';$('feedback').textContent='Увядзі лік 🙂';return;}
-  $('answer').disabled=true;
-  const ok=Math.abs(val-current.a)<0.02;const st=S.topics[current.topicId];st.total++;
-  if(ok){st.correct++;session.correct++;S.correct++;S.solved++;session.answered++;const gain=5+current.difficulty*2;S.xp+=gain;if(st.level<10&&Math.random()<0.7)st.level++;
-    $('mascot-emoji').textContent='🎉';burst();beep(true);$('feedback').className='feedback ok';$('feedback').innerHTML=`✅ Правільна! +${gain} XP<br><span class="hint">${loc(current.hint)}</span>`;
-  }else{S.solved++;session.answered++;session.perfect=false;if(st.level>1)st.level--;
-    $('mascot-emoji').textContent='🤔';beep(false);$('feedback').className='feedback bad';$('feedback').innerHTML=`❌ Правільны адказ: <b>${fd(current.a)}</b><br><span class="hint">${loc(current.hint)}</span>`;
+const STORE_KEY = 'mt6_state_v3';
+const LEGACY_KEY = 'mt6_state_v2';
+const CHAPTERS = ['decimals', 'percent', 'sets', 'rational', 'coords', 'geometry'];
+const SUBS_COUNT = (function () {
+  const base = { decimals: 10, percent: 7, sets: 4, rational: 9, coords: 3, geometry: 5 };
+  if (typeof window !== 'undefined' && window.SUBS) {
+    CHAPTERS.forEach(ch => { if (window.SUBS[ch] && window.SUBS[ch].length) base[ch] = window.SUBS[ch].length; });
   }
-  bumpLevel();touchDay();saveState();$('submit-btn').classList.add('hidden');$('next-btn').classList.remove('hidden');
+  return base;
+})();
+const DEFAULT_LEVEL = 3, MIN_LEVEL = 1, MAX_LEVEL = 10, MIX_LEVEL = 5;
+const BADGE_IDS = ['first', 'ten', 'fifty', 'hundred', 'streak3', 'grade8', 'grade10', 'perfect'];
+
+const TOPICS = [
+  { id: 'decimals', name: 'Дзесятковыя дробы', emoji: '🔟' },
+  { id: 'percent',  name: 'Працэнты і прапорцыі', emoji: '💯' },
+  { id: 'sets',     name: 'Мноствы', emoji: '🎲' },
+  { id: 'rational', name: 'Рацыянальныя лікі', emoji: '➕' },
+  { id: 'coords',   name: 'Каардынатная плоскасць', emoji: '📈' },
+  { id: 'geometry', name: 'Наглядная геаметрыя', emoji: '📐' }
+];
+const TOPIC_MAP = Object.fromEntries(TOPICS.map(t => [t.id, t]));
+
+/* Кароткія назвы §§ — кантракт дызайну (docs/design-sub.md §6) */
+const SUB_SHORT = {
+  'decimals:S1': 'Дзесятковы запіс',      'decimals:S2': 'Параўнанне, акругленне',
+  'decimals:S3': 'Каардынатны прамень',   'decimals:S4': 'Складанне і адніманне',
+  'decimals:S5': '× і ÷ на 10, 100, 1000','decimals:S6': 'Мнажэнне дробаў',
+  'decimals:S7': 'Дзяленне на лік',       'decimals:S8': 'Дзяленне на дроб',
+  'decimals:S9': 'Канечныя і бясконцыя',  'decimals:S10': 'Выразы з дробамі',
+
+  'percent:S1': 'Працэнты',               'percent:S2': 'Задачы на працэнты',
+  'percent:S3': 'Прапорцыя',              'percent:S4': 'Прамая і адваротная',
+  'percent:S5': 'Задачы праз прапорцыі',  'percent:S6': 'Маштаб',
+  'percent:S7': 'Кругавыя дыяграмы',
+
+  'sets:S1': 'Мноства і элементы',        'sets:S2': 'Спосабы задання',
+  'sets:S3': 'Перасячэнне, аб’яднанне',   'sets:S4': 'Кругі Эйлера',
+
+  'rational:S1': 'Дадатныя і адмоўныя',   'rational:S2': 'Модуль, супрацьлеглыя',
+  'rational:S3': 'Параўнанне',            'rational:S4': 'Складанне',
+  'rational:S5': 'Адніманне',             'rational:S6': 'Законы складання',
+  'rational:S7': 'Мнажэнне',              'rational:S8': 'Дзяленне',
+  'rational:S9': 'Задачы на ўсе дзеянні',
+
+  'coords:S1': 'Восі і каардынаты',       'coords:S2': 'Графікі працэсаў',
+  'coords:S3': 'y = kx і y = k/x',
+
+  'geometry:S1': 'Целы і разгорткі',      'geometry:S2': 'Акружнасць, круг',
+  'geometry:S3': 'Трохвугольнікі',        'geometry:S4': 'Сіметрыя адносна пункта',
+  'geometry:S5': 'Восі сіметрыі'
+};
+
+/* ---------- дробныя прыборы ---------- */
+function $(id) { return document.getElementById(id); }
+function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+function num(v) { return typeof v === 'number' && isFinite(v) ? v : 0; }
+function intNonNeg(v) { const n = num(v); return n > 0 ? Math.floor(n) : 0; }
+function clampLevel(v) {
+  const n = Math.floor(num(v));
+  if (n < MIN_LEVEL) return DEFAULT_LEVEL;
+  return Math.min(MAX_LEVEL, n);
 }
-function nextQ(){nextQuestion();}
-function bumpLevel(){S.level=Math.floor(S.xp/100)+1;}
-function touchDay(){const today=new Date().toISOString().slice(0,10);if(S.todayDate!==today){S.todayDate=today;S.todayCount=0;const y=new Date(Date.now()-86400000).toISOString().slice(0,10);S.streakDays=(S.lastDay===y)?S.streakDays+1:1;}S.todayCount++;S.lastDay=today;checkBadges();}
-function checkBadges(){BADGES.forEach(b=>{if(!S.badges.includes(b.id)&&b.test(S))S.badges.push(b.id);});}
-function finishSession(){
-  if(session.perfect&&session.correct===session.total)S.hadPerfectSession=true;
-  checkBadges();saveState();
-  const acc=session.correct/session.total,grade=clampGrade(acc);
-  $('res-grade').textContent=grade;$('res-acc').textContent=Math.round(acc*100)+'%';
-  $('res-correct').textContent=session.correct+' / '+session.total;$('res-xp').textContent='+'+(S.xp-session.startXp)+' XP';
-  $('res-msg').textContent=grade>=10?'Бездакорна! Ты супер! 🌟':grade>=8?'Выдатна! Яшчэ крыху да 10! 🚀':grade>=6?'Добра, працягвай трэніравацца! 💪':'Не здавайся — кожная спроба робіць мацнейшым! 🌱';
-  if(grade>=8)burst();show('screen-result');
+function isDay(v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v); }
+/* acc — працэнт 0..100, ratio — доля 0..1 (для шырыні бараў) */
+function accOf(c, t) { return t > 0 ? Math.round(c / t * 100) : null; }
+function ratioOf(c, t) { return t > 0 ? Math.round(c / t * 1000) / 1000 : null; }
+/* лік для чалавека: «−12,5», «3,14» */
+function fmt(x) {
+  const v = Math.round(x * 1000) / 1000;
+  return String(v).replace('-', '−').replace('.', ',');
 }
-function renderStats(){
-  const g=overallGrade(S);
-  $('st-grade').textContent=g===null?'—':g;$('st-solved').textContent=S.solved;$('st-acc').textContent=S.solved?Math.round(S.correct/S.solved*100)+'%':'—';$('st-streak').textContent=S.streakDays;$('st-level').textContent=S.level;$('st-xp').textContent=S.xp;
-  const wrap=$('topic-bars');wrap.innerHTML='';
-  TOPICS.forEach(t=>{const st=S.topics[t.id],acc=st.total?Math.round(st.correct/st.total*100):0;const row=document.createElement('div');row.className='bar-row';row.innerHTML=`<span class="bar-label">${t.emoji} ${t.name}</span><span class="bar"><span class="bar-fill" style="width:${acc}%"></span></span><span class="bar-val">${st.total?acc+'%':'—'}</span>`;wrap.appendChild(row);});
-  const weak=weakestTopicIds().slice(0,3).filter(x=>S.topics[x.id].total>0);
-  $('weak').textContent=weak.length?weak.map(w=>TOPIC_MAP[w.id].name).join(', '):'Пакуль няма даных — патрэніруйся!';
-  const bw=$('badges');bw.innerHTML='';
-  BADGES.forEach(b=>{const got=S.badges.includes(b.id);const d=document.createElement('div');d.className='badge'+(got?' got':'');d.innerHTML=`<span class="b-emoji">${b.emoji}</span><span class="b-name">${b.name}</span>`;bw.appendChild(d);});
-  $('sound-toggle').checked=!!S.settings.sound;show('screen-stats');
+/* тэкст пытання: 1.5 → 1,5 (генератары ўжо даюць коску) */
+function loc(s) { return String(s).replace(/(\d)\.(\d)/g, '$1,$2'); }
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
-$('start-mix').onclick=()=>startSession('mix');
-$('open-stats').onclick=()=>renderStats();
-$('res-again').onclick=()=>startSession(session?session.scope:'mix');
-$('res-home').onclick=()=>renderHome();
-$('res-stats').onclick=()=>renderStats();
-$('submit-btn').onclick=submitAnswer;
-$('next-btn').onclick=nextQ;
-$('stats-back').onclick=()=>renderHome();
-$('sound-toggle').onchange=(e)=>{S.settings.sound=e.target.checked;saveState();};
-$('reset-btn').onclick=()=>{if(confirm('Скінуць увесь прагрэс?')){S=defaultState();saveState();renderHome();}};
-$('quiz-quit').onclick=()=>renderHome();
+function pluralSubs(n) {
+  const n10 = n % 10, n100 = n % 100;
+  if (n10 === 1 && n100 !== 11) return 'параграф';
+  if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return 'параграфы';
+  return 'параграфаў';
+}
+function clampGrade(acc) { return Math.max(1, Math.min(10, Math.round(1 + acc * 9))); }
+function overallGrade(s) { if (!s.solved) return null; return clampGrade(s.correct / s.solved); }
+
+const BADGES = [
+  { id: 'first', name: 'Першы крок', emoji: '🐣', test: s => s.solved >= 1 },
+  { id: 'ten', name: 'Дзясятак', emoji: '🔟', test: s => s.solved >= 10 },
+  { id: 'fifty', name: 'Паўсотні', emoji: '🏅', test: s => s.solved >= 50 },
+  { id: 'hundred', name: 'Сотня!', emoji: '🏆', test: s => s.solved >= 100 },
+  { id: 'streak3', name: '3 дні запар', emoji: '🔥', test: s => s.streakDays >= 3 },
+  { id: 'grade8', name: 'Адзнака 8+', emoji: '🌟', test: s => overallGrade(s) >= 8 },
+  { id: 'grade10', name: 'Ідэальна 10!', emoji: '💎', test: s => overallGrade(s) >= 10 && s.solved >= 20 },
+  { id: 'perfect', name: 'Бездакорная сесія', emoji: '✨', test: s => s.hadPerfectSession }
+];
+
+/* ============================================================
+   Мадэль даных v3 (docs/data-model-sub.md §5.7)
+   ============================================================ */
+function defaultState() {
+  const topics = {};
+  CHAPTERS.forEach(ch => { topics[ch] = { correct: 0, total: 0, level: DEFAULT_LEVEL }; });
+  return {
+    v: 3, xp: 0, level: 1, solved: 0, correct: 0,
+    streakDays: 0, lastDay: null, todayCount: 0, todayDate: null, dailyGoal: 10,
+    topics, subs: {}, badges: [], hadPerfectSession: false, history: [], settings: { sound: true }
+  };
+}
+
+/* ---------- scope ---------- */
+function parseScope(scope) {
+  if (scope == null) return null;
+  const s = String(scope).trim().toLowerCase().replace(/\s+/g, '');
+  if (!s) return null;
+  if (s === 'mix') return { kind: 'mix', chapter: null, sn: null, subId: null, key: 'mix' };
+  const m = /^([a-z]+)(?::([a-z]?)(\d{1,2}))?$/.exec(s);
+  if (!m) return null;
+  const ch = m[1];
+  if (!Object.prototype.hasOwnProperty.call(SUBS_COUNT, ch)) return null;
+  if (m[3] === undefined) return { kind: 'chapter', chapter: ch, sn: null, subId: null, key: ch };
+  if (m[2] && m[2] !== 's') return null;            // дазволены толькі прэфікс S
+  const sn = parseInt(m[3], 10);
+  if (sn < 1 || sn > SUBS_COUNT[ch]) return null;
+  return { kind: 'sub', chapter: ch, sn: sn, subId: 'S' + sn, key: ch + ':S' + sn };
+}
+function normalizeScope(raw) { const p = parseScope(raw); return p ? p.key : null; }
+
+function snOf(subId) { return Number(String(subId).replace(/\D/g, '')); }
+function subName(chapter, sn) {
+  const list = window.SUBS && window.SUBS[chapter];
+  const full = Array.isArray(list) ? list.find(x => x && x.id === 'S' + sn) : null;
+  return SUB_SHORT[chapter + ':S' + sn] || (full && full.name) || '§' + sn;
+}
+function subFullName(chapter, sn) {
+  const list = window.SUBS && window.SUBS[chapter];
+  const full = Array.isArray(list) ? list.find(x => x && x.id === 'S' + sn) : null;
+  return (full && full.name) || SUB_SHORT[chapter + ':S' + sn] || '';
+}
+
+/* ---------- санацыя ---------- */
+function sanitizeSettings(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { sound: true };
+  return { sound: raw.sound === true };
+}
+function sanitizeTopics(raw) {
+  const out = {};
+  CHAPTERS.forEach(ch => {
+    const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw[ch] : null;
+    const total = src ? intNonNeg(src.total) : 0;
+    let correct = src ? intNonNeg(src.correct) : 0;
+    if (correct > total) correct = total;
+    out[ch] = { correct: correct, total: total, level: src ? clampLevel(src.level) : DEFAULT_LEVEL };
+  });
+  return out;
+}
+function sanitizeSubEntry(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { correct: 0, total: 0, level: DEFAULT_LEVEL };
+  }
+  const total = intNonNeg(raw.total);
+  let correct = intNonNeg(raw.correct);
+  if (correct > total) correct = total;
+  return { correct: correct, total: total, level: clampLevel(raw.level) };
+}
+function sanitizeSubs(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  Object.keys(raw).forEach(k => {
+    const p = parseScope(k);                        // кананізуе і адсякае невядомае
+    if (!p || p.kind !== 'sub') return;
+    out[p.key] = sanitizeSubEntry(raw[k]);
+  });
+  return out;
+}
+function sanitizeState(raw) {
+  const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const out = Object.assign({}, src);               // невядомыя палі пераносім
+  out.v = 3;
+  out.xp = intNonNeg(src.xp);
+  out.level = Math.max(1, Math.floor(num(src.level)) || 1);
+  out.solved = intNonNeg(src.solved);
+  out.correct = Math.min(intNonNeg(src.correct), out.solved);
+  out.streakDays = intNonNeg(src.streakDays);
+  out.lastDay = isDay(src.lastDay) ? src.lastDay : null;
+  out.todayCount = intNonNeg(src.todayCount);
+  out.todayDate = isDay(src.todayDate) ? src.todayDate : null;
+  out.dailyGoal = Math.min(50, Math.max(1, intNonNeg(src.dailyGoal) || 10));
+  out.hadPerfectSession = src.hadPerfectSession === true;
+  out.badges = Array.isArray(src.badges)
+    ? src.badges.filter(b => typeof b === 'string' && BADGE_IDS.indexOf(b) >= 0) : [];
+  out.history = Array.isArray(src.history) ? src.history.slice(-200) : [];
+  out.settings = sanitizeSettings(src.settings);
+  out.topics = sanitizeTopics(src.topics);
+  out.subs = sanitizeSubs(src.subs);
+  return out;
+}
+
+/* ---------- чытанне ---------- */
+function subEntryOf(state, key) {
+  const subs = state && state.subs;
+  return subs && typeof subs === 'object' ? (subs[key] || null) : null;
+}
+/* сярэдні ўзровень пакрытых §§ (раздзела або ўсіх); null — калі даных няма */
+function meanLevelOfSubs(state, chapter) {
+  let sum = 0, n = 0;
+  if (chapter) {
+    for (let i = 1; i <= SUBS_COUNT[chapter]; i++) {
+      const e = subEntryOf(state, chapter + ':S' + i);
+      if (e && e.total > 0) { sum += clampLevel(e.level); n++; }
+    }
+  } else {
+    CHAPTERS.forEach(ch => {
+      for (let i = 1; i <= SUBS_COUNT[ch]; i++) {
+        const e = subEntryOf(state, ch + ':S' + i);
+        if (e && e.total > 0) { sum += clampLevel(e.level); n++; }
+      }
+    });
+  }
+  return n > 0 ? sum / n : null;
+}
+
+function getSubStats(scope, state) {
+  const p = parseScope(scope);
+  if (!p) return null;
+  const st = state || S;
+
+  if (p.kind === 'sub') {
+    const e = subEntryOf(st, p.key) || { correct: 0, total: 0, level: DEFAULT_LEVEL };
+    return {
+      scope: p.key, kind: 'sub', chapter: p.chapter, sn: p.sn, subId: p.subId,
+      correct: e.correct, total: e.total,
+      acc: accOf(e.correct, e.total), ratio: ratioOf(e.correct, e.total),
+      level: e.total > 0 ? clampLevel(e.level) : DEFAULT_LEVEL,
+      empty: e.total === 0
+    };
+  }
+
+  if (p.kind === 'chapter') {
+    const t = (st.topics && st.topics[p.chapter]) || { correct: 0, total: 0, level: DEFAULT_LEVEL };
+    let covered = 0;
+    for (let i = 1; i <= SUBS_COUNT[p.chapter]; i++) {
+      const e = subEntryOf(st, p.chapter + ':S' + i);
+      if (e && e.total > 0) covered++;
+    }
+    return {
+      scope: p.chapter, kind: 'chapter', chapter: p.chapter, sn: null, subId: null,
+      correct: t.correct, total: t.total,
+      acc: accOf(t.correct, t.total), ratio: ratioOf(t.correct, t.total),
+      level: clampLevel(t.level),
+      empty: t.total === 0, covered: covered, subsCount: SUBS_COUNT[p.chapter]
+    };
+  }
+
+  let correct = 0, total = 0, covered = 0, chaptersWithData = 0, lsum = 0;
+  CHAPTERS.forEach(ch => {
+    const t = (st.topics && st.topics[ch]) || { correct: 0, total: 0, level: DEFAULT_LEVEL };
+    correct += t.correct; total += t.total;
+    if (t.total > 0) { chaptersWithData++; lsum += clampLevel(t.level); }
+    for (let i = 1; i <= SUBS_COUNT[ch]; i++) {
+      const e = subEntryOf(st, ch + ':S' + i);
+      if (e && e.total > 0) covered++;
+    }
+  });
+  return {
+    scope: 'mix', kind: 'mix', chapter: null, sn: null, subId: null,
+    correct: correct, total: total, acc: accOf(correct, total), ratio: ratioOf(correct, total),
+    level: chaptersWithData > 0
+      ? Math.min(MAX_LEVEL, Math.max(MIN_LEVEL, Math.round(lsum / chaptersWithData)))
+      : MIX_LEVEL,
+    empty: total === 0, covered: covered, chaptersWithData: chaptersWithData
+  };
+}
+function levelFor(scope, state) {
+  const s = getSubStats(scope, state);
+  return s ? s.level : DEFAULT_LEVEL;
+}
+
+/* ---------- запіс ---------- */
+/* чыстае ядро: новы стан, без мутацый і без localStorage */
+function reduceResult(state, p, ok) {
+  const next = Object.assign({}, state);
+  next.topics = Object.assign({}, state.topics);
+  next.subs = Object.assign({}, state.subs);
+
+  const cur = next.subs[p.key] && typeof next.subs[p.key] === 'object'
+    ? sanitizeSubEntry(next.subs[p.key])
+    : { correct: 0, total: 0, level: DEFAULT_LEVEL };
+  next.subs[p.key] = {
+    correct: cur.correct + (ok ? 1 : 0),
+    total: cur.total + 1,
+    level: ok ? Math.min(MAX_LEVEL, cur.level + 1) : Math.max(MIN_LEVEL, cur.level - 1)
+  };
+
+  const t = next.topics[p.chapter];
+  if (t) {
+    const mean = meanLevelOfSubs(next, p.chapter);
+    next.topics[p.chapter] = {
+      correct: t.correct + (ok ? 1 : 0),
+      total: t.total + 1,
+      level: mean === null ? clampLevel(t.level) : Math.min(MAX_LEVEL, Math.max(MIN_LEVEL, Math.round(mean)))
+    };
+  }
+  return next;
+}
+
+function addResult(scope, ok) {
+  const p = parseScope(scope);
+  if (!p || p.kind !== 'sub') return null;
+  if (typeof ok !== 'boolean') return null;
+  S = reduceResult(sanitizeState(S), p, ok);
+  saveState();
+  return getSubStats(p.key, S);
+}
+
+/* ---------- сховішча ---------- */
+function readRaw(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function parseRaw(raw) { try { return raw == null ? null : JSON.parse(raw); } catch (e) { return null; } }
+function writeState(st) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch (e) { /* квота / прыватны рэжым */ }
+}
+function saveState() { writeState(S); }
+function loadState() {
+  const v3 = parseRaw(readRaw(STORE_KEY));
+  if (v3 && typeof v3 === 'object' && !Array.isArray(v3)) return sanitizeState(v3);
+  const v2 = parseRaw(readRaw(LEGACY_KEY));           // міграцыя v2 → v3
+  if (v2 && typeof v2 === 'object' && !Array.isArray(v2)) {
+    const migrated = sanitizeState(v2);
+    writeState(migrated);                             // адразу фіксуем v3; v2 не чапаем
+    return migrated;
+  }
+  return defaultState();
+}
+
+/* ============================================================
+   Генератары (§) — ключ = кананічны subId
+   ============================================================ */
+const HAS_GEN = !!(window.SUBS && window.GEN_BY_SUB && typeof window.GEN_BY_SUB === 'object');
+
+function gensOf(subId) {
+  const g = HAS_GEN ? window.GEN_BY_SUB[subId] : null;
+  return Array.isArray(g) && g.length ? g : null;
+}
+function subsListOf(chapter) {
+  const list = window.SUBS && window.SUBS[chapter];
+  if (Array.isArray(list) && list.length) {
+    return list.map(s => ({ id: s.id, sn: snOf(s.id), name: s.name }));
+  }
+  const out = [];
+  for (let i = 1; i <= SUBS_COUNT[chapter]; i++) out.push({ id: 'S' + i, sn: i, name: '' });
+  return out;
+}
+function pickSubKey(chapter) {
+  const pool = subsListOf(chapter).filter(s => gensOf(chapter + ':' + s.id));
+  if (!pool.length) return null;
+  return chapter + ':' + pick(pool).id;
+}
+/* раздзелы па слабасці: найслабейшы часцей (як у v2 для mix) */
+function weightedChapters() {
+  const rows = CHAPTERS.map(id => {
+    const st = getSubStats(id);
+    return { id: id, acc: st.acc === null ? 0.5 : st.acc / 100 };
+  }).sort((a, b) => a.acc - b.acc);
+  const out = [];
+  rows.forEach((r, i) => { const c = 4 - i; for (let j = 0; j < c; j++) out.push(r.id); });
+  return out;
+}
+
+function chooseQuestion(scope) {
+  const p = parseScope(scope);
+  if (!p || !HAS_GEN) return null;
+
+  let subKey = null;
+  if (p.kind === 'sub') {
+    subKey = gensOf(p.key) ? p.key : pickSubKey(p.chapter);
+  } else if (p.kind === 'chapter') {
+    subKey = pickSubKey(p.chapter);
+  } else {
+    const order = weightedChapters();
+    for (let i = 0; i < order.length && !subKey; i++) subKey = pickSubKey(order[i]);
+  }
+  if (!subKey) return null;
+
+  const sub = parseScope(subKey);
+  const pool = gensOf(sub.key);
+  if (!pool) return null;
+
+  const d = levelFor(sub.key);                     // складанасць па §
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const fn = pick(pool);
+    try {
+      const r = fn(d);
+      if (!r || typeof r.q !== 'string' || typeof r.a !== 'number' || !isFinite(r.a)) continue;
+      return {
+        q: r.q, a: r.a, hint: typeof r.hint === 'string' ? r.hint : '',
+        topicId: sub.chapter, subId: sub.key, sub: sub.subId, sn: sub.sn,
+        difficulty: d, fn: fn
+      };
+    } catch (e) { /* наступная спроба */ }
+  }
+  return null;
+}
+
+/* ============================================================
+   Канфеті і гук (без змен у паводзінах)
+   ============================================================ */
+const cv = $('confetti');
+const ctx = cv.getContext('2d');
+let particles = [], rafId = null, confettiStopId = null;
+const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+function sizeCanvas() { cv.width = window.innerWidth; cv.height = window.innerHeight; }
+window.addEventListener('resize', sizeCanvas); sizeCanvas();
+function burst() {
+  if (reduceMotion) return;
+  const cols = ['#ff6b6b', '#feca57', '#48dbfb', '#1dd1a1', '#a29bfe', '#fd79a8'];
+  for (let i = 0; i < 90; i++) {
+    particles.push({
+      x: window.innerWidth / 2, y: window.innerHeight / 2.4,
+      vx: (Math.random() - 0.5) * 14, vy: (Math.random() - 0.9) * 14,
+      g: 0.35 + Math.random() * 0.2, col: pick(cols), life: 70 + Math.random() * 30,
+      r: 3 + Math.random() * 4, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.3
+    });
+  }
+  if (!rafId) rafId = requestAnimationFrame(tick);
+  /* засцерагальнік: калі rAF затарможаны (фон/эканомія), канвас не застаецца запоўненым */
+  if (confettiStopId) clearTimeout(confettiStopId);
+  confettiStopId = setTimeout(() => {
+    particles = [];
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    confettiStopId = null;
+  }, 2600);
+}
+function tick() {
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  particles.forEach(p => {
+    p.vy += p.g; p.x += p.vx; p.y += p.vy; p.life--; p.rot += p.vr;
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+    ctx.globalAlpha = Math.max(0, p.life / 80); ctx.fillStyle = p.col;
+    ctx.fillRect(-p.r, -p.r, p.r * 2, p.r * 2); ctx.restore();
+  });
+  particles = particles.filter(p => p.life > 0 && p.y < cv.height + 50);
+  if (particles.length) { rafId = requestAnimationFrame(tick); }
+  else { ctx.clearRect(0, 0, cv.width, cv.height); rafId = null; }
+}
+let audioCtx = null;
+function beep(ok) {
+  if (!S.settings.sound) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination); o.type = 'sine';
+    o.frequency.value = ok ? 880 : 220;
+    g.gain.setValueAtTime(0.001, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.15, audioCtx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+    o.start(); o.stop(audioCtx.currentTime + 0.26);
+  } catch (e) { /* гук — неабавязковы */ }
+}
+
+/* ============================================================
+   Экранная логіка
+   ============================================================ */
+let S = loadState();
+let session = null;
+let current = null;
+let awaiting = false;
+let panelChapter = null;
+let statsChapter = 'decimals';
+
+function show(id) {
+  ['screen-home', 'screen-quiz', 'screen-result', 'screen-stats'].forEach(s => {
+    const el = $(s); if (el) el.classList.toggle('hidden', s !== id);
+  });
+}
+
+/* ---------- галоўная + §-панэль ---------- */
+function renderHome(openChapter) {
+  const g = overallGrade(S);
+  $('home-grade').textContent = g === null ? '—' : g;
+  $('home-level').textContent = S.level;
+  $('home-xp').textContent = S.xp;
+  $('home-streak').textContent = S.streakDays;
+  const goal = Math.min(S.todayCount, S.dailyGoal);
+  $('daily-fill').style.width = Math.round(goal / S.dailyGoal * 100) + '%';
+  $('daily-text').textContent = 'Сёння: ' + goal + '/' + S.dailyGoal;
+
+  const grid = $('topic-grid');
+  grid.innerHTML = '';
+  TOPICS.forEach(t => {
+    const st = getSubStats(t.id);
+    const n = SUBS_COUNT[t.id];
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'topic-card';
+    b.dataset.chapter = t.id;
+    b.setAttribute('aria-controls', 'sub-panel');
+    b.setAttribute('aria-expanded', 'false');
+    b.setAttribute('aria-label', t.name + '. ' + n + ' ' + pluralSubs(n) + '. ' +
+      (st.acc === null ? 'няма даных' : st.acc + ' працэнты') + ', узровень ' + st.level);
+    b.innerHTML =
+      '<span class="tc-emoji" aria-hidden="true">' + t.emoji + '</span>' +
+      '<span class="tc-name">' + esc(t.name) + '</span>' +
+      '<span class="tc-stat">' + (st.acc === null ? 'нов.' : st.acc + '% • ур. ' + st.level) + '</span>' +
+      '<span class="tc-open" aria-hidden="true">выбраць § →</span>';
+    b.onclick = () => openSubPanel(t.id);
+    if (!HAS_GEN) { b.disabled = true; b.setAttribute('aria-disabled', 'true'); }
+    grid.appendChild(b);
+  });
+
+  show('screen-home');
+  closeSubPanel(false);
+  if (openChapter) openSubPanel(openChapter);
+}
+
+function openSubPanel(chapterId) {
+  if (!TOPIC_MAP[chapterId]) return;
+  panelChapter = chapterId;
+  const t = TOPIC_MAP[chapterId];
+  const st = getSubStats(chapterId);
+  const n = SUBS_COUNT[chapterId];
+
+  $('sub-title').textContent = t.emoji + ' ' + t.name;
+  $('sub-title').title = t.emoji + ' ' + t.name;
+  $('sub-chapter-meta').textContent = st.acc === null
+    ? n + ' §§ · няма даных'
+    : n + ' §§ · ' + st.acc + '% · ур. ' + st.level;
+  $('sub-all-meta').textContent = n + ' §§';
+
+  const list = $('sub-list');
+  list.innerHTML = '';
+  const subs = subsListOf(chapterId);
+  if (!subs.length) {
+    const li = document.createElement('li');
+    li.className = 'sub-empty';
+    li.textContent = 'Для гэтага раздзела пакуль няма параграфаў.';
+    list.appendChild(li);
+  }
+  subs.forEach(s => {
+    const key = chapterId + ':' + s.id;             // 'decimals:S4'
+    const stat = getSubStats(key);
+    const state = stat.total === 0 ? 'new' : (stat.acc < 50 ? 'weak' : (stat.acc < 85 ? 'ok' : 'strong'));
+    const full = subFullName(chapterId, s.sn);
+    const label = stat.total === 0
+      ? '§' + s.sn + '. ' + full + '. Яшчэ не трэнавалі'
+      : '§' + s.sn + '. ' + full + '. ' + stat.acc + ' працэнты, узровень ' + stat.level;
+    const width = stat.ratio === null ? 0 : Math.round(stat.ratio * 100);
+
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sub-item';
+    b.id = 'sub-item-' + chapterId + '-' + s.id;
+    b.dataset.chapter = chapterId;
+    b.dataset.sub = s.id;
+    b.dataset.scope = key;                          // design-sub.md: 'decimals:S4'
+    b.setAttribute('data-state', state);
+    b.setAttribute('aria-label', label);
+    b.innerHTML =
+      '<span class="si-num" aria-hidden="true">§' + s.sn + '</span>' +
+      '<span class="si-body">' +
+        '<span class="si-name">' + esc(subName(chapterId, s.sn)) + '</span>' +
+        '<span class="si-bar" aria-hidden="true"><span class="si-bar-fill" style="width:' +
+          width + '%"></span></span>' +
+      '</span>' +
+      '<span class="si-meta">' +
+        '<b class="si-pct">' + (stat.acc === null ? 'нов.' : stat.acc + '%') + '</b>' +
+        '<span class="si-lvl">' + (stat.acc === null ? '—' : 'ур. ' + stat.level) + '</span>' +
+      '</span>' +
+      '<span class="si-arrow" aria-hidden="true">›</span>';
+    b.onclick = () => startSession(b.dataset.scope);
+    li.appendChild(b);
+    list.appendChild(li);
+  });
+
+  $('home-chapters').classList.add('hidden');
+  $('sub-panel').classList.remove('hidden');
+  document.querySelectorAll('.topic-card').forEach(c => {
+    c.setAttribute('aria-expanded', String(c.dataset.chapter === chapterId));
+  });
+  const titleEl = $('sub-title');
+  if (titleEl && titleEl.focus) titleEl.focus();
+}
+
+function closeSubPanel(focusBack) {
+  const panel = $('sub-panel'), chapters = $('home-chapters');
+  if (panel) panel.classList.add('hidden');
+  if (chapters) chapters.classList.remove('hidden');
+  document.querySelectorAll('.topic-card').forEach(c => c.setAttribute('aria-expanded', 'false'));
+  if (focusBack !== false && panelChapter) {
+    const card = document.querySelector('.topic-card[data-chapter="' + panelChapter + '"]');
+    if (card && card.focus) card.focus();
+  }
+  panelChapter = null;
+}
+
+/* ---------- сесія ---------- */
+function startSession(scope) {
+  const canon = normalizeScope(scope);
+  if (!canon || !HAS_GEN) { renderHome(); return; }
+  session = { scope: canon, answered: 0, correct: 0, total: 10, startXp: S.xp, perfect: true };
+  show('screen-quiz');
+  nextQuestion();
+}
+
+function topicLabel() {
+  const ch = TOPIC_MAP[current.topicId];
+  if (!ch) return '';
+  const p = parseScope(session.scope);
+  if (p && p.kind === 'sub') return ch.emoji + ' ' + ch.name + ' · §' + current.sn;
+  if (p && p.kind === 'chapter') return ch.emoji + ' ' + ch.name + ' · усе §';
+  return ch.emoji + ' ' + ch.name + ' · §' + current.sn;
+}
+
+function nextQuestion() {
+  if (!session) return;
+  if (session.answered >= session.total) { finishSession(); return; }
+  current = chooseQuestion(session.scope);
+  if (!current) {
+    // засцерагальнік: ніколі не белы экран і не завесны цыкл
+    $('gen-error').classList.remove('hidden');
+    renderHome();
+    return;
+  }
+  awaiting = false;
+  $('q-counter').textContent = (session.answered + 1) + ' / ' + session.total;
+  const qt = $('q-topic');
+  const label = topicLabel();
+  qt.textContent = label;
+  qt.title = label;
+  $('quiz-fill').style.width = Math.round(session.answered / session.total * 100) + '%';
+  const qText = loc(current.q);
+  const qEl = $('question');
+  /* доўгія тэкставыя задачы не павінны выціскаць поле адказу за экран */
+  qEl.className = 'question' + (qText.length > 150 ? ' q-xlong' : (qText.length > 90 ? ' q-long' : ''));
+  qEl.textContent = qText;
+  const inp = $('answer');
+  inp.value = ''; inp.disabled = false;
+  $('feedback').className = 'feedback hidden';
+  $('feedback').textContent = '';
+  $('submit-btn').classList.remove('hidden');
+  $('next-btn').classList.add('hidden');
+  $('mascot-emoji').textContent = '🦉';
+  inp.onkeydown = e => { if (e.key === 'Enter') submitAnswer(); };
+  setTimeout(() => inp.focus(), 50);
+}
+
+/* правілы ўводу (docs/spec-sub.md §3.6) */
+function parseAns(v) {
+  if (v == null) return NaN;
+  let t = String(v).trim();
+  if (/[eE]/.test(t)) return NaN;
+  t = t.replace(/[\u2212\u2013\u2014]/g, '-');
+  t = t.replace(/[\s\u00a0\u202f]/g, '');
+  t = t.replace(/,/g, '.');
+  t = t.replace(/[^0-9.\-]/g, '');
+  if (!/^-?\d{1,9}(\.\d{1,6})?$/.test(t)) return NaN;
+  return parseFloat(t);
+}
+/* допуск (docs/spec-sub.md §3.5) */
+function dp(x) {
+  const s = String(Math.abs(x));
+  const i = s.indexOf('.');
+  return i < 0 ? 0 : s.length - i - 1;
+}
+function tolFor(a) { return 0.5 * Math.pow(10, -Math.max(dp(a), 2)); }
+function isCorrect(val, a) { return Math.abs(val - a) <= tolFor(a) + 1e-9; }
+
+function submitAnswer() {
+  if (!current || awaiting || !session) return;
+  const val = parseAns($('answer').value);
+  if (isNaN(val)) {
+    $('feedback').className = 'feedback warn';
+    $('feedback').textContent = 'Увядзі лік 🙂';
+    return;
+  }
+  awaiting = true;
+  $('answer').disabled = true;
+
+  const ok = isCorrect(val, current.a);
+
+  // адзіны шлях запісу: addResult сам абнаўляе і subs[key], і topics[chapter]
+  addResult(current.subId, ok);
+
+  if (ok) {
+    session.correct++;
+    S.correct++; S.solved++;
+    const gain = 5 + current.difficulty * 2;
+    S.xp += gain;
+    $('mascot-emoji').textContent = '🎉';
+    burst(); beep(true);
+    $('feedback').className = 'feedback ok';
+    $('feedback').innerHTML = '✅ Правільна! +' + gain + ' XP<br><span class="hint">' +
+      esc(loc(current.hint)) + '</span>';
+  } else {
+    S.solved++;
+    session.perfect = false;
+    $('mascot-emoji').textContent = '🤔';
+    beep(false);
+    $('feedback').className = 'feedback bad';
+    $('feedback').innerHTML = '❌ Правільны адказ: <b>' + fmt(current.a) +
+      '</b><br><span class="hint">' + esc(loc(current.hint)) + '</span>';
+  }
+
+  session.answered++;
+  bumpLevel(); touchDay(); saveState();
+  $('submit-btn').classList.add('hidden');
+  $('next-btn').classList.remove('hidden');
+}
+
+function bumpLevel() { S.level = Math.floor(S.xp / 100) + 1; }
+function touchDay() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (S.todayDate !== today) {
+    S.todayDate = today; S.todayCount = 0;
+    const y = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    S.streakDays = (S.lastDay === y) ? S.streakDays + 1 : 1;
+  }
+  S.todayCount++; S.lastDay = today;
+  checkBadges();
+}
+function checkBadges() {
+  BADGES.forEach(b => { if (!S.badges.includes(b.id) && b.test(S)) S.badges.push(b.id); });
+}
+
+function scopeLabel() {
+  const p = parseScope(session ? session.scope : 'mix');
+  if (!p) return '';
+  if (p.kind === 'sub') return '§' + p.sn + ' · ' + subName(p.chapter, p.sn);
+  if (p.kind === 'chapter') return 'Усе § · ' + TOPIC_MAP[p.chapter].name;
+  return 'Змяшаная трэніроўка';
+}
+
+function finishSession() {
+  if (session.perfect && session.correct === session.total) S.hadPerfectSession = true;
+  checkBadges(); saveState();
+  const acc = session.correct / session.total, grade = clampGrade(acc);
+  $('res-grade').textContent = grade;
+  $('res-acc').textContent = Math.round(acc * 100) + '%';
+  $('res-correct').textContent = session.correct + ' / ' + session.total;
+  $('res-xp').textContent = '+' + (S.xp - session.startXp) + ' XP';
+  $('res-scope').textContent = scopeLabel();
+  const p = parseScope(session.scope);
+  $('res-change').classList.toggle('hidden', !p || p.kind === 'mix');
+  $('res-msg').textContent = grade >= 10 ? 'Бездакорна! Ты супер! 🌟'
+    : grade >= 8 ? 'Выдатна! Яшчэ крыху да 10! 🚀'
+    : grade >= 6 ? 'Добра, працягвай трэніравацца! 💪'
+    : 'Не здавайся — кожная спроба робіць мацнейшым! 🌱';
+  if (grade >= 8) burst();
+  show('screen-result');
+}
+
+/* ---------- дашборд ---------- */
+function renderChapterTabs() {
+  const wrap = $('stats-chapter-tabs');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  TOPICS.forEach(t => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip' + (t.id === statsChapter ? ' active' : '');
+    b.dataset.chapter = t.id;
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', String(t.id === statsChapter));
+    b.textContent = t.emoji + ' ' + t.name;
+    b.onclick = () => { statsChapter = t.id; renderChapterTabs(); renderSubBars(); };
+    wrap.appendChild(b);
+  });
+}
+function renderSubBars() {
+  const wrap = $('stats-sub-bars');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  subsListOf(statsChapter).forEach(s => {
+    const st = getSubStats(statsChapter + ':' + s.id);
+    const width = st.ratio === null ? 0 : Math.round(st.ratio * 100);
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML = '<span class="bar-label">§' + s.sn + ' · ' + esc(subName(statsChapter, s.sn)) +
+      '</span><span class="bar"><span class="bar-fill" style="width:' + width + '%"></span></span>' +
+      '<span class="bar-val">' + (st.acc === null ? '—' : st.acc + '%') + '</span>';
+    wrap.appendChild(row);
+  });
+}
+
+function renderStats() {
+  const g = overallGrade(S);
+  $('st-grade').textContent = g === null ? '—' : g;
+  $('st-solved').textContent = S.solved;
+  $('st-acc').textContent = S.solved ? Math.round(S.correct / S.solved * 100) + '%' : '—';
+  $('st-streak').textContent = S.streakDays;
+  $('st-level').textContent = S.level;
+  $('st-xp').textContent = S.xp;
+
+  const wrap = $('topic-bars');
+  wrap.innerHTML = '';
+  TOPICS.forEach(t => {
+    const st = getSubStats(t.id);
+    const width = st.ratio === null ? 0 : Math.round(st.ratio * 100);
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML = '<span class="bar-label">' + t.emoji + ' ' + esc(t.name) + '</span>' +
+      '<span class="bar"><span class="bar-fill" style="width:' + width + '%"></span></span>' +
+      '<span class="bar-val">' + (st.acc === null ? '—' : st.acc + '%') + '</span>';
+    wrap.appendChild(row);
+  });
+
+  const weak = TOPICS
+    .map(t => ({ id: t.id, name: t.name, st: getSubStats(t.id) }))
+    .filter(x => x.st.total > 0)
+    .sort((a, b) => (a.st.acc === null ? 101 : a.st.acc) - (b.st.acc === null ? 101 : b.st.acc))
+    .slice(0, 3);
+  $('weak').textContent = weak.length
+    ? weak.map(w => w.name).join(', ')
+    : 'Пакуль няма даных — патрэніруйся!';
+
+  const bw = $('badges');
+  bw.innerHTML = '';
+  BADGES.forEach(b => {
+    const got = S.badges.includes(b.id);
+    const d = document.createElement('div');
+    d.className = 'badge' + (got ? ' got' : '');
+    d.innerHTML = '<span class="b-emoji">' + b.emoji + '</span><span class="b-name">' + esc(b.name) + '</span>';
+    bw.appendChild(d);
+  });
+
+  renderChapterTabs();
+  renderSubBars();
+  $('sound-toggle').checked = !!S.settings.sound;
+  show('screen-stats');
+}
+
+/* ---------- падзеі ---------- */
+function bindEvents() {
+  $('start-mix').onclick = () => startSession('mix');
+  $('open-stats').onclick = () => renderStats();
+  $('sub-back').onclick = () => closeSubPanel();
+  $('sub-back-bottom').onclick = () => closeSubPanel();
+  $('sub-all').onclick = () => { if (panelChapter) startSession(panelChapter); };
+  $('res-again').onclick = () => startSession(session ? session.scope : 'mix');
+  $('res-change').onclick = () => {
+    const p = parseScope(session ? session.scope : 'mix');
+    if (p && p.kind !== 'mix') renderHome(p.chapter); else renderHome();
+  };
+  $('res-home').onclick = () => renderHome();
+  $('res-stats').onclick = () => renderStats();
+  $('submit-btn').onclick = submitAnswer;
+  $('next-btn').onclick = () => { awaiting = false; nextQuestion(); };
+  $('stats-back').onclick = () => renderHome();
+  $('sound-toggle').onchange = e => { S.settings.sound = e.target.checked; saveState(); };
+  $('reset-btn').onclick = () => {
+    if (!confirm('Скінуць увесь прагрэс?')) return;
+    try { localStorage.removeItem(STORE_KEY); localStorage.removeItem(LEGACY_KEY); } catch (e) { /* прыватны рэжым */ }
+    S = defaultState(); saveState(); renderHome();
+  };
+  $('quiz-quit').onclick = () => {
+    const p = parseScope(session ? session.scope : 'mix');
+    if (p && p.kind !== 'mix') renderHome(p.chapter); else renderHome();
+  };
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const home = $('screen-home');
+    if (!home || home.classList.contains('hidden')) return;
+    if (!panelChapter) return;
+    closeSubPanel();
+  });
+}
+
+/* ---------- старт ---------- */
+if (!HAS_GEN) {
+  const banner = $('gen-error');
+  if (banner) banner.classList.remove('hidden');
+}
+bindEvents();
 renderHome();
