@@ -32,36 +32,6 @@ const TOPICS = [
 ];
 const TOPIC_MAP = Object.fromEntries(TOPICS.map(t => [t.id, t]));
 
-/* Кароткія назвы §§ — кантракт дызайну (docs/design-sub.md §6) */
-const SUB_SHORT = {
-  'decimals:S1': 'Дзесятковы запіс',      'decimals:S2': 'Параўнанне, акругленне',
-  'decimals:S3': 'Каардынатны прамень',   'decimals:S4': 'Складанне і адніманне',
-  'decimals:S5': '× і ÷ на 10, 100, 1000','decimals:S6': 'Мнажэнне дробаў',
-  'decimals:S7': 'Дзяленне на лік',       'decimals:S8': 'Дзяленне на дроб',
-  'decimals:S9': 'Канечныя і бясконцыя',  'decimals:S10': 'Выразы з дробамі',
-
-  'percent:S1': 'Працэнты',               'percent:S2': 'Задачы на працэнты',
-  'percent:S3': 'Прапорцыя',              'percent:S4': 'Прамая і адваротная',
-  'percent:S5': 'Задачы праз прапорцыі',  'percent:S6': 'Маштаб',
-  'percent:S7': 'Кругавыя дыяграмы',
-
-  'sets:S1': 'Мноства і элементы',        'sets:S2': 'Спосабы задання',
-  'sets:S3': 'Перасячэнне, аб’яднанне',   'sets:S4': 'Кругі Эйлера',
-
-  'rational:S1': 'Дадатныя і адмоўныя',   'rational:S2': 'Модуль, супрацьлеглыя',
-  'rational:S3': 'Параўнанне',            'rational:S4': 'Складанне',
-  'rational:S5': 'Адніманне',             'rational:S6': 'Законы складання',
-  'rational:S7': 'Мнажэнне',              'rational:S8': 'Дзяленне',
-  'rational:S9': 'Задачы на ўсе дзеянні',
-
-  'coords:S1': 'Восі і каардынаты',       'coords:S2': 'Графікі працэсаў',
-  'coords:S3': 'y = kx і y = k/x',
-
-  'geometry:S1': 'Целы і разгорткі',      'geometry:S2': 'Акружнасць, круг',
-  'geometry:S3': 'Трохвугольнікі',        'geometry:S4': 'Сіметрыя адносна пункта',
-  'geometry:S5': 'Восі сіметрыі'
-};
-
 /* ---------- дробныя прыборы ---------- */
 function $(id) { return document.getElementById(id); }
 function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
@@ -139,15 +109,19 @@ function parseScope(scope) {
 function normalizeScope(raw) { const p = parseScope(raw); return p ? p.key : null; }
 
 function snOf(subId) { return Number(String(subId).replace(/\D/g, '')); }
-function subName(chapter, sn) {
+/* Адзіная крыніца назваў §§ — window.SUBS (generators.js), DEC-2.
+   app.js не трымае ніводнай назвы §; фолбэк — толькі нумар. */
+function subRecord(chapter, sn) {
   const list = window.SUBS && window.SUBS[chapter];
-  const full = Array.isArray(list) ? list.find(x => x && x.id === 'S' + sn) : null;
-  return SUB_SHORT[chapter + ':S' + sn] || (full && full.name) || '§' + sn;
+  return Array.isArray(list) ? list.find(x => x && x.id === 'S' + sn) || null : null;
+}
+function subName(chapter, sn) {
+  const full = subRecord(chapter, sn);
+  return (full && full.name) || '§' + sn;
 }
 function subFullName(chapter, sn) {
-  const list = window.SUBS && window.SUBS[chapter];
-  const full = Array.isArray(list) ? list.find(x => x && x.id === 'S' + sn) : null;
-  return (full && full.name) || SUB_SHORT[chapter + ':S' + sn] || '';
+  const full = subRecord(chapter, sn);
+  return (full && full.name) || '';
 }
 
 /* ---------- санацыя ---------- */
@@ -367,6 +341,10 @@ function pickSubKey(chapter) {
   if (!pool.length) return null;
   return chapter + ':' + pick(pool).id;
 }
+/* ці ёсць у раздзеле хоць адзін § з генератарамі (для «Усе §» і mix) */
+function hasAnyGen(chapter) {
+  return subsListOf(chapter).some(s => !!gensOf(chapter + ':' + s.id));
+}
 /* раздзелы па слабасці: найслабейшы часцей (як у v2 для mix) */
 function weightedChapters() {
   const rows = CHAPTERS.map(id => {
@@ -384,7 +362,8 @@ function chooseQuestion(scope) {
 
   let subKey = null;
   if (p.kind === 'sub') {
-    subKey = gensOf(p.key) ? p.key : pickSubKey(p.chapter);
+    /* явa выбраны § без генератара — не падмяняем іншым § (DEC-10) */
+    subKey = gensOf(p.key) ? p.key : null;
   } else if (p.kind === 'chapter') {
     subKey = pickSubKey(p.chapter);
   } else {
@@ -520,6 +499,14 @@ function renderHome(openChapter) {
     grid.appendChild(b);
   });
 
+  /* «Змяшаная трэніроўка» неактыўная без генератараў (клік не маўчыць) */
+  const mixBtn = $('start-mix');
+  if (mixBtn) {
+    const canMix = HAS_GEN && CHAPTERS.some(hasAnyGen);
+    mixBtn.disabled = !canMix;
+    mixBtn.setAttribute('aria-disabled', String(!canMix));
+  }
+
   show('screen-home');
   closeSubPanel(false);
   if (openChapter) openSubPanel(openChapter);
@@ -537,11 +524,17 @@ function openSubPanel(chapterId) {
   $('sub-chapter-meta').textContent = st.acc === null
     ? n + ' §§ · няма даных'
     : n + ' §§ · ' + st.acc + '% · ур. ' + st.level;
-  $('sub-all-meta').textContent = n + ' §§';
 
   const list = $('sub-list');
   list.innerHTML = '';
   const subs = subsListOf(chapterId);
+  /* § 5.5: «Усе §» працуе, калі ў раздзеле ёсць хоць адзін § з генератарамі */
+  const usable = subs.some(s => !!gensOf(chapterId + ':' + s.id));
+  const allBtn = $('sub-all');
+  allBtn.disabled = !usable;
+  allBtn.setAttribute('aria-disabled', String(!usable));
+  $('sub-all-meta').textContent = usable ? n + ' §§' : 'недаступна';
+
   if (!subs.length) {
     const li = document.createElement('li');
     li.className = 'sub-empty';
@@ -550,12 +543,17 @@ function openSubPanel(chapterId) {
   }
   subs.forEach(s => {
     const key = chapterId + ':' + s.id;             // 'decimals:S4'
+    const hasGen = !!gensOf(key);                   // DEC-10: § без генератараў
+    if (!hasGen) console.error('няма генератара: ' + key);
     const stat = getSubStats(key);
-    const state = stat.total === 0 ? 'new' : (stat.acc < 50 ? 'weak' : (stat.acc < 85 ? 'ok' : 'strong'));
+    const state = !hasGen ? 'unavailable'
+      : (stat.total === 0 ? 'new' : (stat.acc < 50 ? 'weak' : (stat.acc < 85 ? 'ok' : 'strong')));
     const full = subFullName(chapterId, s.sn);
-    const label = stat.total === 0
-      ? '§' + s.sn + '. ' + full + '. Яшчэ не трэнавалі'
-      : '§' + s.sn + '. ' + full + '. ' + stat.acc + ' працэнты, узровень ' + stat.level;
+    const label = !hasGen
+      ? '§' + s.sn + '. ' + full + '. недаступна'
+      : stat.total === 0
+        ? '§' + s.sn + '. ' + full + '. Яшчэ не трэнавалі'
+        : '§' + s.sn + '. ' + full + '. ' + stat.acc + ' працэнты, узровень ' + stat.level;
     const width = stat.ratio === null ? 0 : Math.round(stat.ratio * 100);
 
     const li = document.createElement('li');
@@ -576,11 +574,17 @@ function openSubPanel(chapterId) {
           width + '%"></span></span>' +
       '</span>' +
       '<span class="si-meta">' +
-        '<b class="si-pct">' + (stat.acc === null ? 'нов.' : stat.acc + '%') + '</b>' +
-        '<span class="si-lvl">' + (stat.acc === null ? '—' : 'ур. ' + stat.level) + '</span>' +
+        '<b class="si-pct">' + (!hasGen ? 'недаступна'
+          : (stat.acc === null ? 'нов.' : stat.acc + '%')) + '</b>' +
+        '<span class="si-lvl">' + (!hasGen ? '' : (stat.acc === null ? '—' : 'ур. ' + stat.level)) + '</span>' +
       '</span>' +
       '<span class="si-arrow" aria-hidden="true">›</span>';
-    b.onclick = () => startSession(b.dataset.scope);
+    if (hasGen) {
+      b.onclick = () => startSession(b.dataset.scope);
+    } else {
+      b.disabled = true;                            // сесія не стартуе
+      b.setAttribute('aria-disabled', 'true');
+    }
     li.appendChild(b);
     list.appendChild(li);
   });
@@ -610,15 +614,30 @@ function closeSubPanel(focusBack) {
 function startSession(scope) {
   const canon = normalizeScope(scope);
   if (!canon || !HAS_GEN) { renderHome(); return; }
+  const p = parseScope(canon);
+  /* DEC-10 / §5.5: § без генератараў не запускае сесію і не падмяняецца іншым § */
+  if (p.kind === 'sub' && !gensOf(p.key)) {
+    console.error('няма генератара: ' + p.key);
+    return;
+  }
+  if ((p.kind === 'chapter' && !hasAnyGen(p.chapter)) ||
+      (p.kind === 'mix' && !CHAPTERS.some(hasAnyGen))) {
+    const banner = $('gen-error');
+    if (banner) banner.classList.remove('hidden');
+    renderHome();
+    return;
+  }
   session = { scope: canon, answered: 0, correct: 0, total: 10, startXp: S.xp, perfect: true };
   show('screen-quiz');
   nextQuestion();
 }
 
 function topicLabel() {
+  const p = parseScope(session ? session.scope : 'mix');
+  /* §5.7, канон 1.2: у mix загаловак — «Змяшаная трэніроўка», без раздзела і § */
+  if (p && p.kind === 'mix') return '🦉 Змяшаная трэніроўка';
   const ch = TOPIC_MAP[current.topicId];
   if (!ch) return '';
-  const p = parseScope(session.scope);
   if (p && p.kind === 'sub') return ch.emoji + ' ' + ch.name + ' · §' + current.sn;
   if (p && p.kind === 'chapter') return ch.emoji + ' ' + ch.name + ' · усе §';
   return ch.emoji + ' ' + ch.name + ' · §' + current.sn;
@@ -870,11 +889,22 @@ function bindEvents() {
     if (p && p.kind !== 'mix') renderHome(p.chapter); else renderHome();
   };
   document.addEventListener('keydown', e => {
-    if (e.key !== 'Escape') return;
-    const home = $('screen-home');
-    if (!home || home.classList.contains('hidden')) return;
-    if (!panelChapter) return;
-    closeSubPanel();
+    if (e.key === 'Escape') {
+      const home = $('screen-home');
+      if (home && !home.classList.contains('hidden') && panelChapter) closeSubPanel();
+      return;
+    }
+    if (e.key === 'Enter') {
+      // Enter = «Далей», калі паказаны вынік і кнопка бачная.
+      // Калі фокус у полі адказу — даём яму адправіць адказ (каб не пераскочыць водгук).
+      const quiz = $('screen-quiz'), nb = $('next-btn');
+      if (awaiting && quiz && !quiz.classList.contains('hidden') && nb && !nb.classList.contains('hidden')) {
+        if (e.target && e.target.id === 'answer') return;
+        e.preventDefault();
+        awaiting = false;
+        nextQuestion();
+      }
+    }
   });
 }
 
