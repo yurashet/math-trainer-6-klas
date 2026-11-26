@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="be">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Матэматычны трэнажор · 6 клас</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<canvas id="confetti"></canvas>
+
+<section id="screen-home" class="screen">
+  <header class="brand"><span class="logo">🦉</span> Матэматычны трэнажор <small>6 клас</small></header>
+  <div class="stats-row">
+    <div class="stat-chip"><span class="sc-val" id="home-grade">—</span><span class="sc-lbl">адзнака</span></div>
+    <div class="stat-chip"><span class="sc-val" id="home-level">1</span><span class="sc-lbl">узровень</span></div>
+    <div class="stat-chip"><span class="sc-val" id="home-xp">0</span><span class="sc-lbl">XP</span></div>
+    <div class="stat-chip"><span class="sc-val" id="home-streak">0</span><span class="sc-lbl">дзён запар</span></div>
+  </div>
+  <div class="daily"><div class="daily-bar"><div id="daily-fill" class="daily-fill"></div></div><span id="daily-text">Сёння: 0/10</span></div>
+  <button id="start-mix" class="btn btn-primary btn-big">▶ Змяшаная трэніроўка</button>
+  <p class="section-title">Або абяры тэму:</p>
+  <div id="topic-grid" class="topic-grid"></div>
+  <button id="open-stats" class="btn btn-ghost">📊 Мой прагрэс</button>
+</section>
+
+<section id="screen-quiz" class="screen hidden">
+  <div class="quiz-top">
+    <button id="quiz-quit" class="btn-icon">←</button>
+    <span id="q-topic" class="q-topic"></span>
+    <span id="q-counter" class="q-counter">1 / 10</span>
+  </div>
+  <div class="progress"><div id="quiz-fill" class="progress-fill"></div></div>
+  <div class="mascot"><span id="mascot-emoji">🦉</span></div>
+  <div id="question" class="question">—</div>
+  <input id="answer" class="answer-input" type="text" inputmode="decimal" autocomplete="off" placeholder="Твой адказ">
+  <div id="feedback" class="feedback hidden"></div>
+  <button id="submit-btn" class="btn btn-primary btn-big">Праверыць</button>
+  <button id="next-btn" class="btn btn-primary btn-big hidden">Далей →</button>
+</section>
+
+<section id="screen-result" class="screen hidden">
+  <div class="result-card">
+    <div class="res-emoji">🏁</div>
+    <div class="res-grade"><span id="res-grade">—</span><small>/10</small></div>
+    <p id="res-msg" class="res-msg"></p>
+    <div class="res-grid">
+      <div><b id="res-acc">—</b><span>дакладнасць</span></div>
+      <div><b id="res-correct">—</b><span>правільна</span></div>
+      <div><b id="res-xp">—</b><span>XP</span></div>
+    </div>
+    <button id="res-again" class="btn btn-primary btn-big">🔁 Яшчэ раз</button>
+    <div class="res-row">
+      <button id="res-home" class="btn btn-ghost">🏠 На галоўную</button>
+      <button id="res-stats" class="btn btn-ghost">📊 Дашборд</button>
+    </div>
+  </div>
+</section>
+
+<section id="screen-stats" class="screen hidden">
+  <div class="quiz-top"><button id="stats-back" class="btn-icon">←</button><span class="q-topic">Мой прагрэс</span><span></span></div>
+  <div class="stats-row">
+    <div class="stat-chip"><span class="sc-val" id="st-grade">—</span><span class="sc-lbl">адзнака</span></div>
+    <div class="stat-chip"><span class="sc-val" id="st-solved">0</span><span class="sc-lbl">вырашана</span></div>
+    <div class="stat-chip"><span class="sc-val" id="st-acc">—</span><span class="sc-lbl">дакладнасць</span></div>
+    <div class="stat-chip"><span class="sc-val" id="st-streak">0</span><span class="sc-lbl">streak</span></div>
+  </div>
+  <div class="stats-row"><div class="stat-chip"><span class="sc-val" id="st-level">1</span><span class="sc-lbl">узровень</span></div><div class="stat-chip"><span class="sc-val" id="st-xp">0</span><span class="sc-lbl">XP</span></div></div>
+  <div class="panel"><h3>Па тэмах</h3><div id="topic-bars"></div></div>
+  <div class="panel"><h3>Слабыя тэмы</h3><p id="weak" class="weak"></p></div>
+  <div class="panel"><h3>Знакі</h3><div id="badges" class="badges"></div></div>
+  <div class="panel row-between"><span>🔊 Гук</span><label class="switch"><input type="checkbox" id="sound-toggle"><span class="slider"></span></label></div>
+  <button id="reset-btn" class="btn btn-danger">Скінуць прагрэс</button>
+</section>
+
+<script src="app.js"></script>
+</body>
+</html>
